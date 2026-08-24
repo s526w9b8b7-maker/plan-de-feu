@@ -1,0 +1,763 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="mobile-web-app-capable" content="yes">
+<title>Plan de Feu</title>
+<style>
+  :root{
+    --bg: #14171c;
+    --panel: #1b1f26;
+    --panel-2: #20252d;
+    --border: #2c323c;
+    --text: #e6e8eb;
+    --muted: #8b95a1;
+    --amber: #e8a33d;
+    --amber-dim: #6b5326;
+    --blue: #4ea8de;
+    --blue-dim: #274a5c;
+    --danger: #d9634f;
+    --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    --sans: -apple-system, "SF Pro Text", system-ui, sans-serif;
+  }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body {
+    margin:0; padding:0; height:100%; overflow:hidden;
+    background: var(--bg); color: var(--text);
+    font-family: var(--sans);
+    -webkit-user-select:none; user-select:none;
+  }
+  #app { display:flex; flex-direction:column; height:100%; }
+
+  /* Top bar */
+  #topbar{
+    display:flex; align-items:center; gap:8px;
+    padding:10px 12px; background:var(--panel);
+    border-bottom:1px solid var(--border);
+    flex-shrink:0; overflow-x:auto;
+  }
+  #topbar .title{
+    font-family: var(--mono); font-size:13px; color:var(--amber);
+    letter-spacing:0.5px; white-space:nowrap; padding-right:8px;
+    border-right:1px solid var(--border); margin-right:4px;
+  }
+  button, .btn{
+    background:var(--panel-2); color:var(--text); border:1px solid var(--border);
+    padding:8px 12px; border-radius:6px; font-size:13px; cursor:pointer;
+    white-space:nowrap; font-family:var(--sans);
+  }
+  button:active{ background:#2a303a; }
+  button.primary{ background:var(--amber-dim); border-color:var(--amber); color:#ffd899; }
+  button.blueish{ background:var(--blue-dim); border-color:var(--blue); color:#bfe4fb; }
+  button.danger{ background:#3a221e; border-color:var(--danger); color:#f3aa9c; }
+  button:disabled{ opacity:0.35; cursor:default; }
+  input[type=file]{ display:none; }
+
+  /* Body layout */
+  #body{ flex:1; display:flex; min-height:0; }
+
+  /* Sidebar */
+  #sidebar{
+    width:250px; flex-shrink:0; background:var(--panel);
+    border-right:1px solid var(--border);
+    display:flex; flex-direction:column; min-height:0;
+  }
+  #sidebar h2{
+    font-size:11px; text-transform:uppercase; letter-spacing:1px;
+    color:var(--muted); margin:12px 12px 6px; font-weight:600;
+  }
+  #patchSearch{
+    margin:0 12px 8px; padding:7px 9px; background:var(--bg);
+    border:1px solid var(--border); border-radius:6px; color:var(--text);
+    font-size:13px; font-family:var(--mono);
+  }
+  #patchList{ flex:1; overflow-y:auto; padding:0 6px 12px; }
+  .patch-row{
+    display:flex; align-items:center; gap:8px;
+    padding:8px 8px; margin:0 6px 4px; border-radius:6px;
+    border:1px solid transparent; cursor:pointer; font-size:13px;
+  }
+  .patch-row:active{ background:var(--panel-2); }
+  .patch-row.selected{ background:var(--amber-dim); border-color:var(--amber); }
+  .patch-row .addr{
+    font-family:var(--mono); color:var(--amber); font-size:12px;
+    min-width:34px; flex-shrink:0;
+  }
+  .patch-row .info{ flex:1; min-width:0; }
+  .patch-row .name{ overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .patch-row .type{ color:var(--muted); font-size:11px; }
+  .patch-row .dot{
+    width:7px; height:7px; border-radius:50%; flex-shrink:0;
+  }
+  .patch-row .dot.unplaced{ background:var(--muted); }
+  .patch-row .dot.placed{ background:#6fcf6f; }
+  #emptyPatch{
+    margin:20px 16px; color:var(--muted); font-size:13px; line-height:1.5;
+  }
+
+  /* Canvas area */
+  #canvasWrap{
+    flex:1; position:relative; overflow:hidden; background:
+      linear-gradient(90deg, transparent 0%, transparent 100%),
+      #0e1014;
+    touch-action:none;
+  }
+  #canvasInner{
+    position:absolute; top:0; left:0;
+    background:#0e1014;
+  }
+  #zoomLayer{
+    transform-origin: 0 0;
+  }
+  #planSurface{
+    position:relative; width:1400px; height:900px;
+    background-image:
+      linear-gradient(rgba(255,255,255,0.035) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(255,255,255,0.035) 1px, transparent 1px);
+    background-size: 40px 40px;
+    background-color:#0e1014;
+  }
+  #bgImage{
+    position:absolute; top:0; left:0; max-width:none;
+    pointer-events:none; opacity:0.9;
+  }
+
+  /* Symbols */
+  .symbol{
+    position:absolute; width:34px; height:34px; margin:-17px 0 0 -17px;
+    cursor:grab; touch-action:none;
+  }
+  .symbol:active{ cursor:grabbing; }
+  .symbol .shape{
+    width:100%; height:100%; border-radius:8px;
+    display:flex; align-items:center; justify-content:center;
+    font-family:var(--mono); font-size:10px; font-weight:700;
+    border:2px solid; transform: rotate(var(--rot,0deg));
+  }
+  .symbol.fixture .shape{
+    background:rgba(232,163,61,0.18); border-color:var(--amber); color:#ffd899;
+    border-radius:50%;
+  }
+  .symbol.camera .shape{
+    background:rgba(78,168,222,0.18); border-color:var(--blue); color:#bfe4fb;
+    clip-path: polygon(50% 0%, 100% 100%, 0% 100%);
+  }
+  .symbol.selected .shape{ box-shadow: 0 0 0 3px rgba(255,255,255,0.25); }
+  .symbol .label{
+    position:absolute; top:36px; left:50%; transform:translateX(-50%);
+    font-size:10px; color:var(--muted); white-space:nowrap;
+    background:rgba(14,16,20,0.75); padding:1px 4px; border-radius:3px;
+  }
+  .rotHandle{
+    position:absolute; width:16px; height:16px; border-radius:50%;
+    background:var(--panel); border:2px solid var(--text);
+    left:50%; top:-24px; margin-left:-8px; cursor:grab; touch-action:none;
+  }
+
+  /* Inspector */
+  #inspector{
+    position:absolute; bottom:14px; left:50%; transform:translateX(-50%);
+    background:var(--panel); border:1px solid var(--border); border-radius:10px;
+    padding:10px 14px; display:none; align-items:center; gap:10px;
+    box-shadow:0 8px 24px rgba(0,0,0,0.4); font-size:13px; z-index:5;
+  }
+  #inspector.show{ display:flex; }
+  #inspector .name{ font-weight:600; }
+  #inspector .meta{ color:var(--muted); font-family:var(--mono); font-size:11px; }
+
+  /* Zoom controls */
+  #zoomCtl{
+    position:absolute; top:14px; right:14px; display:flex; flex-direction:column;
+    gap:6px; z-index:5;
+  }
+  #zoomCtl button{ width:38px; height:38px; font-size:16px; padding:0; }
+
+  /* Placement hint */
+  #placeHint{
+    position:absolute; top:14px; left:14px; background:var(--amber-dim);
+    border:1px solid var(--amber); color:#ffd899; padding:8px 12px;
+    border-radius:8px; font-size:13px; display:none; z-index:5;
+  }
+  #placeHint.show{ display:block; }
+
+  /* Modal */
+  .modal-bg{
+    position:fixed; inset:0; background:rgba(0,0,0,0.6);
+    display:none; align-items:center; justify-content:center; z-index:20;
+  }
+  .modal-bg.show{ display:flex; }
+  .modal{
+    background:var(--panel); border:1px solid var(--border); border-radius:12px;
+    padding:20px; width:min(420px, 90vw); max-height:80vh; overflow-y:auto;
+  }
+  .modal h3{ margin:0 0 14px; font-size:15px; }
+  .modal label{ display:block; font-size:12px; color:var(--muted); margin:10px 0 4px; }
+  .modal select, .modal input[type=text]{
+    width:100%; padding:8px; background:var(--bg); border:1px solid var(--border);
+    border-radius:6px; color:var(--text); font-size:13px;
+  }
+  .modal .actions{ display:flex; justify-content:flex-end; gap:8px; margin-top:18px; }
+</style>
+</head>
+<body>
+<div id="app">
+
+  <div id="topbar">
+    <span class="title">PLAN&nbsp;DE&nbsp;FEU</span>
+    <button id="btnImportCsv">Importer patch (CSV)</button>
+    <button id="btnUploadBg">Fond de plan</button>
+    <button id="btnAddCamera" class="blueish">+ Caméra</button>
+    <span style="flex:1"></span>
+    <button id="btnExport">Exporter</button>
+    <button id="btnImport">Ouvrir fichier</button>
+    <button id="btnClear" class="danger">Vider</button>
+    <input type="file" id="fileCsv" accept=".csv,text/csv">
+    <input type="file" id="fileBg" accept="image/*">
+    <input type="file" id="fileProject" accept="application/json">
+  </div>
+
+  <div id="body">
+    <div id="sidebar">
+      <h2>Patch</h2>
+      <input id="patchSearch" placeholder="Filtrer (nom, adresse...)">
+      <div id="patchList"></div>
+      <div id="emptyPatch">Aucun patch importé.<br>Utilise "Importer patch (CSV)" pour charger l'export de ta console.</div>
+    </div>
+
+    <div id="canvasWrap">
+      <div id="canvasInner">
+        <div id="zoomLayer">
+          <div id="planSurface">
+            <img id="bgImage" style="display:none">
+          </div>
+        </div>
+      </div>
+
+      <div id="placeHint">Touche le plan pour placer le projecteur sélectionné</div>
+
+      <div id="zoomCtl">
+        <button id="zoomIn">+</button>
+        <button id="zoomOut">−</button>
+        <button id="zoomReset" style="font-size:11px;">100%</button>
+      </div>
+
+      <div id="inspector">
+        <div>
+          <div class="name" id="inspName">—</div>
+          <div class="meta" id="inspMeta">—</div>
+        </div>
+        <button id="btnDeleteSelected" class="danger">Supprimer</button>
+        <button id="btnCloseInsp">Fermer</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="modal-bg" id="mapModalBg">
+  <div class="modal">
+    <h3>Correspondance des colonnes</h3>
+    <div id="mapFields"></div>
+    <div class="actions">
+      <button id="mapCancel">Annuler</button>
+      <button id="mapConfirm" class="primary">Importer</button>
+    </div>
+  </div>
+</div>
+
+<script>
+(() => {
+  "use strict";
+
+  /* ---------- State ---------- */
+  const STORAGE_KEY = "planDeFeu_project_v1";
+  const MAP_KEY = "planDeFeu_lastMapping_v1";
+
+  let project = loadProject() || {
+    backgroundImage: null,
+    patch: [],       // {id, address, name, type}
+    fixtures: [],    // {id, patchId, x, y, rot}
+    cameras: []      // {id, name, x, y, rot}
+  };
+
+  let selectedPatchId = null;   // patch item picked from sidebar, waiting to be placed
+  let selectedSymbol = null;    // {kind:'fixture'|'camera', id}
+  let view = { scale: 1, x: 40, y: 40 };
+
+  /* ---------- DOM refs ---------- */
+  const $ = (id) => document.getElementById(id);
+  const planSurface = $("planSurface");
+  const zoomLayer = $("zoomLayer");
+  const canvasInner = $("canvasInner");
+  const canvasWrap = $("canvasWrap");
+  const bgImage = $("bgImage");
+  const patchListEl = $("patchList");
+  const emptyPatchEl = $("emptyPatch");
+  const placeHint = $("placeHint");
+  const inspector = $("inspector");
+
+  /* ---------- Persistence ---------- */
+  function saveProject() {
+    try { localStorage.setItem(STORAGE_KEY, JSON.stringify(project)); }
+    catch (e) { console.warn("Sauvegarde impossible", e); }
+  }
+  function loadProject() {
+    try {
+      const raw = localStorage.getItem(STORAGE_KEY);
+      return raw ? JSON.parse(raw) : null;
+    } catch (e) { return null; }
+  }
+  function uid() { return Math.random().toString(36).slice(2, 10); }
+
+  /* ---------- CSV parsing (no external deps, offline-safe) ---------- */
+  function parseCsv(text) {
+    text = text.replace(/^\uFEFF/, ""); // strip BOM (Excel FR exports)
+    const lines = text.split(/\r\n|\n|\r/).filter(l => l.trim().length > 0);
+    if (lines.length === 0) return { headers: [], rows: [] };
+    const commaCount = (lines[0].match(/,/g) || []).length;
+    const semiCount = (lines[0].match(/;/g) || []).length;
+    const delim = semiCount > commaCount ? ";" : ",";
+
+    function parseLine(line) {
+      const out = [];
+      let cur = "", inQuotes = false;
+      for (let i = 0; i < line.length; i++) {
+        const c = line[i];
+        if (inQuotes) {
+          if (c === '"') {
+            if (line[i + 1] === '"') { cur += '"'; i++; }
+            else inQuotes = false;
+          } else cur += c;
+        } else {
+          if (c === '"') inQuotes = true;
+          else if (c === delim) { out.push(cur); cur = ""; }
+          else cur += c;
+        }
+      }
+      out.push(cur);
+      return out.map(s => s.trim());
+    }
+
+    const headers = parseLine(lines[0]);
+    const rows = lines.slice(1).map(parseLine);
+    return { headers, rows };
+  }
+
+  function guessColumn(headers, candidates) {
+    const lower = headers.map(h => h.toLowerCase());
+    for (const c of candidates) {
+      const idx = lower.findIndex(h => h.includes(c));
+      if (idx !== -1) return idx;
+    }
+    return -1;
+  }
+
+  /* ---------- CSV import flow ---------- */
+  let pendingCsv = null;
+
+  $("btnImportCsv").addEventListener("click", () => $("fileCsv").click());
+  $("fileCsv").addEventListener("change", async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const text = await file.text();
+    pendingCsv = parseCsv(text);
+    e.target.value = "";
+    openMappingModal(pendingCsv.headers);
+  });
+
+  function openMappingModal(headers) {
+    const fieldsEl = $("mapFields");
+    fieldsEl.innerHTML = "";
+    const fields = [
+      { key: "address", label: "Adresse / Circuit", cands: ["adresse", "address", "circuit", "univers", "dmx"] },
+      { key: "name", label: "Nom du projecteur", cands: ["nom", "name", "label", "fixture", "libell"] },
+      { key: "type", label: "Type", cands: ["type", "modele", "modèle", "model"] }
+    ];
+    let lastMap = {};
+    try { lastMap = JSON.parse(localStorage.getItem(MAP_KEY) || "{}"); } catch (e) {}
+
+    fields.forEach(f => {
+      const label = document.createElement("label");
+      label.textContent = f.label;
+      const select = document.createElement("select");
+      select.id = "map_" + f.key;
+      const optNone = document.createElement("option");
+      optNone.value = "-1"; optNone.textContent = "(aucune)";
+      select.appendChild(optNone);
+      headers.forEach((h, i) => {
+        const opt = document.createElement("option");
+        opt.value = i; opt.textContent = h;
+        select.appendChild(opt);
+      });
+      let guess = lastMap[f.key] !== undefined && headers[lastMap[f.key]] !== undefined
+        ? lastMap[f.key]
+        : guessColumn(headers, f.cands);
+      if (guess !== -1) select.value = guess;
+      fieldsEl.appendChild(label);
+      fieldsEl.appendChild(select);
+    });
+
+    $("mapModalBg").classList.add("show");
+  }
+
+  $("mapCancel").addEventListener("click", () => $("mapModalBg").classList.remove("show"));
+
+  $("mapConfirm").addEventListener("click", () => {
+    if (!pendingCsv) return;
+    const idxAddr = parseInt($("map_address").value, 10);
+    const idxName = parseInt($("map_name").value, 10);
+    const idxType = parseInt($("map_type").value, 10);
+    localStorage.setItem(MAP_KEY, JSON.stringify({ address: idxAddr, name: idxName, type: idxType }));
+
+    const newItems = pendingCsv.rows.map(row => ({
+      id: uid(),
+      address: idxAddr >= 0 ? (row[idxAddr] || "") : "",
+      name: idxName >= 0 ? (row[idxName] || "Sans nom") : "Sans nom",
+      type: idxType >= 0 ? (row[idxType] || "") : ""
+    })).filter(item => item.name || item.address);
+
+    project.patch = newItems;
+    // drop fixtures that reference patch entries no longer present
+    const validIds = new Set(newItems.map(i => i.id));
+    project.fixtures = project.fixtures.filter(f => validIds.has(f.patchId));
+
+    $("mapModalBg").classList.remove("show");
+    pendingCsv = null;
+    saveProject();
+    renderPatchList();
+    renderSymbols();
+  });
+
+  /* ---------- Patch list rendering ---------- */
+  function isPlaced(patchId) {
+    return project.fixtures.some(f => f.patchId === patchId);
+  }
+
+  function renderPatchList() {
+    const q = $("patchSearch").value.trim().toLowerCase();
+    patchListEl.innerHTML = "";
+    const items = project.patch.filter(p =>
+      !q || p.name.toLowerCase().includes(q) || p.address.toLowerCase().includes(q) || p.type.toLowerCase().includes(q)
+    );
+    emptyPatchEl.style.display = project.patch.length === 0 ? "block" : "none";
+
+    items.forEach(p => {
+      const row = document.createElement("div");
+      row.className = "patch-row" + (selectedPatchId === p.id ? " selected" : "");
+      const placed = isPlaced(p.id);
+      row.innerHTML = `
+        <span class="dot ${placed ? "placed" : "unplaced"}"></span>
+        <span class="addr">${escapeHtml(p.address || "—")}</span>
+        <span class="info">
+          <div class="name">${escapeHtml(p.name)}</div>
+          <div class="type">${escapeHtml(p.type || "")}</div>
+        </span>`;
+      row.addEventListener("click", () => {
+        selectedPatchId = (selectedPatchId === p.id) ? null : p.id;
+        placeHint.classList.toggle("show", !!selectedPatchId);
+        renderPatchList();
+      });
+      patchListEl.appendChild(row);
+    });
+  }
+
+  function escapeHtml(s) {
+    return String(s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+  }
+
+  $("patchSearch").addEventListener("input", renderPatchList);
+
+  /* ---------- Background plan image ---------- */
+  $("btnUploadBg").addEventListener("click", () => $("fileBg").click());
+  $("fileBg").addEventListener("change", (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      project.backgroundImage = reader.result;
+      applyBackground();
+      saveProject();
+    };
+    reader.readAsDataURL(file);
+    e.target.value = "";
+  });
+
+  function applyBackground() {
+    if (project.backgroundImage) {
+      bgImage.src = project.backgroundImage;
+      bgImage.style.display = "block";
+      bgImage.onload = () => {
+        planSurface.style.width = bgImage.naturalWidth + "px";
+        planSurface.style.height = bgImage.naturalHeight + "px";
+      };
+    } else {
+      bgImage.style.display = "none";
+      bgImage.removeAttribute("src");
+    }
+  }
+
+  /* ---------- Adding cameras ---------- */
+  let placingCamera = false;
+  $("btnAddCamera").addEventListener("click", () => {
+    placingCamera = true;
+    selectedPatchId = null;
+    placeHint.textContent = "Touche le plan pour placer la caméra";
+    placeHint.classList.add("show");
+    renderPatchList();
+  });
+
+  /* ---------- Placing on the plan ---------- */
+  planSurface.addEventListener("pointerdown", (e) => {
+    if (e.target !== planSurface && e.target !== bgImage) return; // clicked a symbol, handled elsewhere
+    const rect = planSurface.getBoundingClientRect();
+    const x = ((e.clientX - rect.left) / rect.width) * 100;
+    const y = ((e.clientY - rect.top) / rect.height) * 100;
+
+    if (selectedPatchId) {
+      const existing = project.fixtures.find(f => f.patchId === selectedPatchId);
+      if (existing) { existing.x = x; existing.y = y; }
+      else project.fixtures.push({ id: uid(), patchId: selectedPatchId, x, y, rot: 0 });
+      selectedPatchId = null;
+      placeHint.classList.remove("show");
+      saveProject(); renderPatchList(); renderSymbols();
+      return;
+    }
+    if (placingCamera) {
+      project.cameras.push({ id: uid(), name: "Caméra " + (project.cameras.length + 1), x, y, rot: 0 });
+      placingCamera = false;
+      placeHint.classList.remove("show");
+      saveProject(); renderSymbols();
+      return;
+    }
+    // otherwise: clicked empty plan -> deselect
+    deselectSymbol();
+  });
+
+  /* ---------- Symbol rendering & drag/rotate ---------- */
+  function renderSymbols() {
+    planSurface.querySelectorAll(".symbol").forEach(el => el.remove());
+
+    project.fixtures.forEach(f => {
+      const patchItem = project.patch.find(p => p.id === f.patchId);
+      const el = makeSymbolEl("fixture", f, patchItem ? patchItem.name : "?", patchItem ? patchItem.address : "");
+      planSurface.appendChild(el);
+    });
+    project.cameras.forEach(c => {
+      const el = makeSymbolEl("camera", c, c.name, "");
+      planSurface.appendChild(el);
+    });
+  }
+
+  function makeSymbolEl(kind, obj, labelText, addr) {
+    const el = document.createElement("div");
+    el.className = "symbol " + kind;
+    el.style.left = obj.x + "%";
+    el.style.top = obj.y + "%";
+    el.dataset.id = obj.id;
+    el.dataset.kind = kind;
+
+    const shape = document.createElement("div");
+    shape.className = "shape";
+    shape.style.setProperty("--rot", (obj.rot || 0) + "deg");
+    shape.textContent = kind === "fixture" ? (addr || "•") : "CAM";
+    el.appendChild(shape);
+
+    const label = document.createElement("div");
+    label.className = "label";
+    label.textContent = labelText;
+    el.appendChild(label);
+
+    const handle = document.createElement("div");
+    handle.className = "rotHandle";
+    el.appendChild(handle);
+
+    attachSymbolDrag(el, obj, shape);
+    attachRotateDrag(handle, obj, shape);
+
+    el.addEventListener("pointerdown", (e) => {
+      e.stopPropagation();
+      selectSymbol(kind, obj.id);
+    });
+
+    return el;
+  }
+
+  function attachSymbolDrag(el, obj, shape) {
+    let dragging = false;
+    el.addEventListener("pointerdown", (e) => {
+      dragging = true;
+      el.setPointerCapture(e.pointerId);
+      e.stopPropagation();
+    });
+    el.addEventListener("pointermove", (e) => {
+      if (!dragging) return;
+      const rect = planSurface.getBoundingClientRect();
+      let x = ((e.clientX - rect.left) / rect.width) * 100;
+      let y = ((e.clientY - rect.top) / rect.height) * 100;
+      x = Math.max(0, Math.min(100, x));
+      y = Math.max(0, Math.min(100, y));
+      obj.x = x; obj.y = y;
+      el.style.left = x + "%";
+      el.style.top = y + "%";
+    });
+    function end(e) {
+      if (!dragging) return;
+      dragging = false;
+      saveProject();
+      updateInspector();
+    }
+    el.addEventListener("pointerup", end);
+    el.addEventListener("pointercancel", end);
+  }
+
+  function attachRotateDrag(handle, obj, shape) {
+    let rotating = false;
+    handle.addEventListener("pointerdown", (e) => {
+      rotating = true;
+      handle.setPointerCapture(e.pointerId);
+      e.stopPropagation();
+    });
+    handle.addEventListener("pointermove", (e) => {
+      if (!rotating) return;
+      const symbolEl = handle.parentElement;
+      const rect = symbolEl.getBoundingClientRect();
+      const cx = rect.left + rect.width / 2;
+      const cy = rect.top + rect.height / 2;
+      const angle = Math.atan2(e.clientY - cy, e.clientX - cx) * (180 / Math.PI) + 90;
+      obj.rot = Math.round(angle);
+      shape.style.setProperty("--rot", obj.rot + "deg");
+    });
+    function end() {
+      if (!rotating) return;
+      rotating = false;
+      saveProject();
+      updateInspector();
+    }
+    handle.addEventListener("pointerup", end);
+    handle.addEventListener("pointercancel", end);
+  }
+
+  /* ---------- Selection & inspector ---------- */
+  function selectSymbol(kind, id) {
+    selectedSymbol = { kind, id };
+    document.querySelectorAll(".symbol").forEach(el => {
+      el.classList.toggle("selected", el.dataset.kind === kind && el.dataset.id === id);
+    });
+    updateInspector();
+  }
+  function deselectSymbol() {
+    selectedSymbol = null;
+    document.querySelectorAll(".symbol.selected").forEach(el => el.classList.remove("selected"));
+    inspector.classList.remove("show");
+  }
+  function updateInspector() {
+    if (!selectedSymbol) { inspector.classList.remove("show"); return; }
+    inspector.classList.add("show");
+    if (selectedSymbol.kind === "fixture") {
+      const f = project.fixtures.find(x => x.id === selectedSymbol.id);
+      const p = f ? project.patch.find(pp => pp.id === f.patchId) : null;
+      $("inspName").textContent = p ? p.name : "Projecteur";
+      $("inspMeta").textContent = `Adresse ${p ? p.address || "—" : "—"} · rot ${f ? f.rot : 0}°`;
+    } else {
+      const c = project.cameras.find(x => x.id === selectedSymbol.id);
+      $("inspName").textContent = c ? c.name : "Caméra";
+      $("inspMeta").textContent = `rot ${c ? c.rot : 0}°`;
+    }
+  }
+  $("btnCloseInsp").addEventListener("click", deselectSymbol);
+  $("btnDeleteSelected").addEventListener("click", () => {
+    if (!selectedSymbol) return;
+    if (selectedSymbol.kind === "fixture") {
+      project.fixtures = project.fixtures.filter(f => f.id !== selectedSymbol.id);
+    } else {
+      project.cameras = project.cameras.filter(c => c.id !== selectedSymbol.id);
+    }
+    deselectSymbol();
+    saveProject(); renderPatchList(); renderSymbols();
+  });
+
+  /* ---------- Zoom & pan ---------- */
+  function applyView() {
+    canvasInner.style.transform = `translate(${view.x}px, ${view.y}px)`;
+    zoomLayer.style.transform = `scale(${view.scale})`;
+  }
+  $("zoomIn").addEventListener("click", () => { view.scale = Math.min(3, view.scale + 0.15); applyView(); });
+  $("zoomOut").addEventListener("click", () => { view.scale = Math.max(0.2, view.scale - 0.15); applyView(); });
+  $("zoomReset").addEventListener("click", () => { view = { scale: 1, x: 40, y: 40 }; applyView(); });
+
+  let panning = false, panStart = null;
+  canvasWrap.addEventListener("pointerdown", (e) => {
+    if (e.target !== canvasWrap) return;
+    panning = true;
+    panStart = { x: e.clientX, y: e.clientY, vx: view.x, vy: view.y };
+  });
+  canvasWrap.addEventListener("pointermove", (e) => {
+    if (!panning) return;
+    view.x = panStart.vx + (e.clientX - panStart.x);
+    view.y = panStart.vy + (e.clientY - panStart.y);
+    applyView();
+  });
+  ["pointerup", "pointercancel", "pointerleave"].forEach(evt =>
+    canvasWrap.addEventListener(evt, () => { panning = false; })
+  );
+
+  /* ---------- Export / Import project ---------- */
+  $("btnExport").addEventListener("click", () => {
+    const blob = new Blob([JSON.stringify(project, null, 2)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "plan-de-feu-" + new Date().toISOString().slice(0, 10) + ".json";
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  });
+
+  $("btnImport").addEventListener("click", () => $("fileProject").click());
+  $("fileProject").addEventListener("change", async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    try {
+      const text = await file.text();
+      const data = JSON.parse(text);
+      if (!data || !Array.isArray(data.patch)) throw new Error("format invalide");
+      project = {
+        backgroundImage: data.backgroundImage || null,
+        patch: data.patch || [],
+        fixtures: data.fixtures || [],
+        cameras: data.cameras || []
+      };
+      saveProject();
+      applyBackground();
+      renderPatchList();
+      renderSymbols();
+      deselectSymbol();
+    } catch (err) {
+      alert("Impossible de lire ce fichier : " + err.message);
+    }
+    e.target.value = "";
+  });
+
+  $("btnClear").addEventListener("click", () => {
+    if (!confirm("Effacer tout le projet (patch, placements, fond de plan) ? Cette action est irréversible.")) return;
+    project = { backgroundImage: null, patch: [], fixtures: [], cameras: [] };
+    saveProject();
+    applyBackground();
+    renderPatchList();
+    renderSymbols();
+    deselectSymbol();
+  });
+
+  /* ---------- Init ---------- */
+  applyBackground();
+  renderPatchList();
+  renderSymbols();
+  applyView();
+})();
+
+</script>
+</body>
+</html>
