@@ -25,7 +25,7 @@
     --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
     --sans: -apple-system, "SF Pro Text", system-ui, sans-serif;
   }
-  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; -webkit-touch-callout: none; }
   html, body {
     margin:0; padding:0; height:100%; overflow:hidden;
     background: var(--bg); color: var(--text);
@@ -103,7 +103,7 @@
   }
   .patch-row .dot.unplaced{ background:var(--muted); }
   .patch-row .dot.placed{ background:#6fcf6f; }
-  .patch-row{ touch-action:none; }
+  .patch-row{ touch-action:pan-y; }
   .drag-ghost{
     position:fixed; z-index:30; pointer-events:none; transform:translate(-50%,-50%);
     background:var(--panel); border:2px solid var(--amber); color:var(--text);
@@ -699,19 +699,29 @@
   }
 
   /* ---------- Drag an item from the sidebar onto the plan to place it ---------- */
+  // Rows stay touch-scrollable (touch-action: pan-y) — a drag only "wins" over the
+  // list's native scroll once the finger has moved past DRAG_THRESHOLD px, at which
+  // point we take over the gesture ourselves (preventDefault) and show the ghost.
+  // A plain vertical scroll swipe never crosses the threshold before the browser
+  // has already started scrolling, so the two don't fight each other.
+  const DRAG_THRESHOLD = 10;
   function attachDragSource(el, ghostLabel, onDrop) {
     el.addEventListener("pointerdown", (e) => {
-      e.stopPropagation();
+      const startX = e.clientX, startY = e.clientY;
+      let dragging = false;
+      let ghost = null;
       el.setPointerCapture(e.pointerId);
 
-      const ghost = document.createElement("div");
-      ghost.className = "drag-ghost";
-      ghost.textContent = ghostLabel;
-      ghost.style.left = e.clientX + "px";
-      ghost.style.top = e.clientY + "px";
-      document.body.appendChild(ghost);
-
       function onMove(ev) {
+        if (!dragging) {
+          if (Math.hypot(ev.clientX - startX, ev.clientY - startY) < DRAG_THRESHOLD) return;
+          dragging = true;
+          ghost = document.createElement("div");
+          ghost.className = "drag-ghost";
+          ghost.textContent = ghostLabel;
+          document.body.appendChild(ghost);
+        }
+        if (ev.cancelable) ev.preventDefault();
         ghost.style.left = ev.clientX + "px";
         ghost.style.top = ev.clientY + "px";
       }
@@ -719,6 +729,7 @@
         el.removeEventListener("pointermove", onMove);
         el.removeEventListener("pointerup", onUp);
         el.removeEventListener("pointercancel", onUp);
+        if (!dragging) return; // simple tap / scroll — no placement
         ghost.remove();
         const rect = planSurface.getBoundingClientRect();
         if (ev.clientX >= rect.left && ev.clientX <= rect.right && ev.clientY >= rect.top && ev.clientY <= rect.bottom) {
