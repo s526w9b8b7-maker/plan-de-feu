@@ -103,6 +103,18 @@
   }
   .patch-row .dot.unplaced{ background:var(--muted); }
   .patch-row .dot.placed{ background:#6fcf6f; }
+  .patch-row .drag-handle{
+    flex-shrink:0; width:28px; height:28px; display:flex; align-items:center;
+    justify-content:center; font-size:16px; color:var(--muted); cursor:grab;
+    touch-action:none; border-radius:6px;
+  }
+  .patch-row .drag-handle:active{ background:var(--panel-2); color:var(--text); }
+  .drag-ghost{
+    position:fixed; z-index:30; pointer-events:none; transform:translate(-50%,-50%);
+    background:var(--panel); border:2px solid var(--amber); color:var(--text);
+    padding:6px 10px; border-radius:8px; font-size:12px; font-family:var(--mono);
+    box-shadow:0 4px 12px rgba(0,0,0,0.5);
+  }
   #emptyPatch{
     margin:20px 16px; color:var(--muted); font-size:13px; line-height:1.5;
   }
@@ -236,7 +248,7 @@
   <div id="topbar">
     <span class="title">PLAN&nbsp;DE&nbsp;FEU</span>
     <button id="btnImportCsv">Importer patch (CSV)</button>
-    <button id="btnUploadBg">Fond de plan</button>
+    <button id="btnUploadBg">Importer fond</button>
     <button id="btnAddCamera" class="blueish">+ Caméra</button>
     <button id="btnAddDecor" class="greenish">+ Décor</button>
     <button id="btnToggleTech">Masquer technique</button>
@@ -422,24 +434,13 @@
     else profile.params.forEach(p => { if (fixture.live[p] == null) fixture.live[p] = profile.defaults[p] != null ? profile.defaults[p] : 0; });
     return fixture.live;
   }
-  function hexToRgba(hex, a) {
-    const m = hex.match(/\w\w/g);
-    if (!m || m.length < 3) return null;
-    const [r, g, b] = m.map(h => parseInt(h, 16));
-    return `rgba(${r},${g},${b},${a})`;
-  }
-  // couleur d'identité du projecteur (issue du patch, ex. LABEL_COLOR) ; l'intensité live pilote l'opacité
-  function applyLiveVisual(el, obj, profile, patchItem) {
+  // couleur d'identité du projecteur (issue du patch, ex. LABEL_COLOR) : uniquement le liseré,
+  // jamais le fond ni l'opacité, pour que le numéro reste toujours lisible sur le plan.
+  function applyFixtureColor(el, patchItem) {
     if (!el) return;
     const shape = el.querySelector(".shape");
     if (!shape) return;
-    const live = obj.live || (profile && profile.defaults) || { dimmer: 100 };
-    const dim = live.dimmer != null ? live.dimmer : 100;
-    shape.style.opacity = (0.22 + (Math.max(0, Math.min(100, dim)) / 100) * 0.78).toFixed(2);
-    const color = patchItem && patchItem.color ? patchItem.color : null;
-    const bg = color ? hexToRgba(color, 0.28) : null;
-    if (color && bg) { shape.style.borderColor = color; shape.style.background = bg; }
-    else { shape.style.borderColor = ""; shape.style.background = ""; }
+    shape.style.borderColor = (patchItem && patchItem.color) ? patchItem.color : "";
   }
 
   /* ---------- CSV parsing (no external deps, offline-safe) ---------- */
@@ -502,7 +503,7 @@
     const fieldsEl = $("mapFields");
     fieldsEl.innerHTML = "";
     const fields = [
-      { key: "address", label: "Adresse / Circuit", cands: ["fixture_number", "numero", "adresse", "address", "circuit", "univers", "dmx"] },
+      { key: "address", label: "Numéro de projecteur", cands: ["fixture_number", "numero", "adresse", "address", "circuit", "univers", "dmx"] },
       { key: "type", label: "Type", cands: ["type", "modele", "modèle", "model"] },
       { key: "manufacturer", label: "Fabricant", cands: ["manufacturer", "fabricant", "marque"] },
       { key: "mode", label: "Mode DMX", cands: ["mode"] },
@@ -590,13 +591,57 @@
         <span class="addr">${escapeHtml(p.address || "—")}</span>
         <span class="info">
           <div class="name">${escapeHtml(p.type || "Type inconnu")}</div>
-        </span>`;
+        </span>
+        <span class="drag-handle" title="Glisser sur le plan">⠿</span>`;
       row.addEventListener("click", () => {
         selectedPatchId = (selectedPatchId === p.id) ? null : p.id;
         placeHint.classList.toggle("show", !!selectedPatchId);
         renderPatchList();
       });
+      attachPatchRowDrag(row.querySelector(".drag-handle"), p);
       patchListEl.appendChild(row);
+    });
+  }
+
+  function placeFixture(patchId, x, y) {
+    const existing = project.fixtures.find(f => f.patchId === patchId);
+    if (existing) { existing.x = x; existing.y = y; }
+    else project.fixtures.push({ id: uid(), patchId, x, y, rot: 0 });
+    saveProject(); renderPatchList(); renderSymbols();
+  }
+
+  /* ---------- Drag a patch entry from the sidebar onto the plan ---------- */
+  function attachPatchRowDrag(handle, p) {
+    handle.addEventListener("pointerdown", (e) => {
+      e.stopPropagation();
+      handle.setPointerCapture(e.pointerId);
+
+      const ghost = document.createElement("div");
+      ghost.className = "drag-ghost";
+      ghost.textContent = p.address || p.type || "?";
+      ghost.style.left = e.clientX + "px";
+      ghost.style.top = e.clientY + "px";
+      document.body.appendChild(ghost);
+
+      function onMove(ev) {
+        ghost.style.left = ev.clientX + "px";
+        ghost.style.top = ev.clientY + "px";
+      }
+      function onUp(ev) {
+        handle.removeEventListener("pointermove", onMove);
+        handle.removeEventListener("pointerup", onUp);
+        handle.removeEventListener("pointercancel", onUp);
+        ghost.remove();
+        const rect = planSurface.getBoundingClientRect();
+        if (ev.clientX >= rect.left && ev.clientX <= rect.right && ev.clientY >= rect.top && ev.clientY <= rect.bottom) {
+          const x = ((ev.clientX - rect.left) / rect.width) * 100;
+          const y = ((ev.clientY - rect.top) / rect.height) * 100;
+          placeFixture(p.id, x, y);
+        }
+      }
+      handle.addEventListener("pointermove", onMove);
+      handle.addEventListener("pointerup", onUp);
+      handle.addEventListener("pointercancel", onUp);
     });
   }
 
@@ -661,7 +706,6 @@
         fixture.live[param] = v;
         valEl.textContent = Math.round(v) + meta.unit;
         saveProject();
-        applyLiveVisual(document.querySelector(`.symbol[data-kind="fixture"][data-id="${fixture.id}"]`), fixture, profile, patchItem);
       });
       paramsEl.appendChild(row);
     });
@@ -736,12 +780,9 @@
     const y = ((e.clientY - rect.top) / rect.height) * 100;
 
     if (selectedPatchId) {
-      const existing = project.fixtures.find(f => f.patchId === selectedPatchId);
-      if (existing) { existing.x = x; existing.y = y; }
-      else project.fixtures.push({ id: uid(), patchId: selectedPatchId, x, y, rot: 0 });
+      placeFixture(selectedPatchId, x, y);
       selectedPatchId = null;
       placeHint.classList.remove("show");
-      saveProject(); renderPatchList(); renderSymbols();
       return;
     }
     if (placingCamera) {
@@ -813,9 +854,9 @@
       selectSymbol(kind, obj.id);
     });
 
-    if (kind === "fixture" && profile) {
-      ensureLive(obj, profile);
-      applyLiveVisual(el, obj, profile, patchItem);
+    if (kind === "fixture") {
+      if (profile) ensureLive(obj, profile);
+      applyFixtureColor(el, patchItem);
     }
 
     return el;
