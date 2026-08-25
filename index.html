@@ -465,21 +465,24 @@
       ranges: { dimmer: [0, 100], cct: [1700, 10000], hue: [0, 360], sat: [0, 100] },
       defaults: { dimmer: 0, cct: 5600, hue: 0, sat: 0 }
     },
-    "creamsource|vortex|3": {
-      label: "Vortex — CCT & Hue/Saturation 8-bit",
-      params: ["dimmer", "cct", "hue", "sat", "fanMode"],
-      ranges: { dimmer: [0, 100], cct: [2200, 15000], hue: [0, 360], sat: [0, 100], fanMode: [0, 100] },
-      defaults: { dimmer: 0, cct: 5600, hue: 0, sat: 0, fanMode: 0 }
-    },
-    // le PDX de référence porte la marque "Creamsource" mais Aputure distribue/labellise
-    // aussi ce fixture sous son propre nom selon les patchs — on couvre les deux
-    "aputure|vortex|3": {
-      label: "Vortex — CCT & Hue/Saturation 8-bit",
-      params: ["dimmer", "cct", "hue", "sat", "fanMode"],
-      ranges: { dimmer: [0, 100], cct: [2200, 15000], hue: [0, 360], sat: [0, 100], fanMode: [0, 100] },
-      defaults: { dimmer: 0, cct: 5600, hue: 0, sat: 0, fanMode: 0 }
-    }
   };
+
+  // Vortex (Creamsource ; distribué/labellisé aussi par Aputure) existe en 4 tailles —
+  // V2/V4/V8/V24 (nombre d'unités de ventilation) — avec un footprint DMX différent par
+  // variante, mais le mode 3 (CCT & Hue/Saturation) pilote la même chose logiquement sur
+  // toutes : on enregistre donc le même profil sous chaque variante et chaque fabricant.
+  const VORTEX_PROFILE = {
+    label: "Vortex — CCT & Hue/Saturation 8-bit",
+    params: ["dimmer", "cct", "hue", "sat", "fanMode"],
+    ranges: { dimmer: [0, 100], cct: [2200, 15000], hue: [0, 360], sat: [0, 100], fanMode: [0, 100] },
+    defaults: { dimmer: 0, cct: 5600, hue: 0, sat: 0, fanMode: 0 }
+  };
+  ["creamsource", "aputure"].forEach(manu => {
+    ["vortex", "vortex2", "vortex4", "vortex8", "vortex24"].forEach(variant => {
+      FIXTURE_PROFILES[`${manu}|${variant}|3`] = VORTEX_PROFILE;
+    });
+  });
+
   const GENERIC_PROFILE = {
     label: "Générique (intensité seule)",
     params: ["dimmer"],
