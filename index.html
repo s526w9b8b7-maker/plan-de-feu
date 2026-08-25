@@ -103,24 +103,19 @@
   }
   .patch-row .dot.unplaced{ background:var(--muted); }
   .patch-row .dot.placed{ background:#6fcf6f; }
-  .patch-row .drag-handle{
-    flex-shrink:0; width:28px; height:28px; display:flex; align-items:center;
-    justify-content:center; font-size:16px; color:var(--muted); cursor:grab;
-    touch-action:none; border-radius:6px;
-  }
-  .patch-row .drag-handle:active{ background:var(--panel-2); color:var(--text); }
+  .patch-row{ touch-action:none; }
   .drag-ghost{
     position:fixed; z-index:30; pointer-events:none; transform:translate(-50%,-50%);
     background:var(--panel); border:2px solid var(--amber); color:var(--text);
     padding:6px 10px; border-radius:8px; font-size:12px; font-family:var(--mono);
     box-shadow:0 4px 12px rgba(0,0,0,0.5);
   }
-  #emptyPatch{
+  #emptyPatch, #fixtureEmpty, .tab-hint{
     margin:20px 16px; color:var(--muted); font-size:13px; line-height:1.5;
   }
-  #fixtureEmpty{
-    margin:20px 16px; color:var(--muted); font-size:13px; line-height:1.5;
-  }
+  #cameraTabContent, #fondTabContent, #decorFixtureTabContent{ padding:0 0 12px; }
+  #fondTabContent{ padding:16px; }
+  #cameraTemplateList, #decorTemplateList{ padding:0 6px; }
   #fixtureParams{ padding:12px; display:none; }
   .param-row{ margin:0 0 16px; }
   .param-row .row-head{
@@ -170,8 +165,13 @@
     border:2px solid; transform: rotate(var(--rot,0deg));
   }
   .symbol.fixture .shape{
-    background:rgba(232,163,61,0.18); border-color:var(--amber); color:#ffd899;
+    background:transparent; border-color:var(--amber); color:#ffd899;
     border-radius:50%;
+  }
+  .symbol.fixture .shape .center{
+    width:62%; height:62%; border-radius:50%;
+    display:flex; align-items:center; justify-content:center;
+    background:rgba(232,163,61,0.35);
   }
   .symbol.camera .shape{
     background:rgba(78,168,222,0.18); border-color:var(--blue); color:#bfe4fb;
@@ -215,13 +215,8 @@
   }
   #zoomCtl button{ width:38px; height:38px; font-size:16px; padding:0; }
 
-  /* Placement hint */
-  #placeHint{
-    position:absolute; top:14px; left:14px; background:var(--amber-dim);
-    border:1px solid var(--amber); color:#ffd899; padding:8px 12px;
-    border-radius:8px; font-size:13px; display:none; z-index:5;
-  }
-  #placeHint.show{ display:block; }
+  /* Mode buttons */
+  button.mode-active{ box-shadow:0 0 0 2px var(--text) inset; }
 
   /* Modal */
   .modal-bg{
@@ -248,33 +243,47 @@
   <div id="topbar">
     <span class="title">PLAN&nbsp;DE&nbsp;FEU</span>
     <button id="btnImportCsv">Importer patch (CSV)</button>
-    <button id="btnUploadBg">Importer fond</button>
-    <button id="btnAddCamera" class="blueish">+ Caméra</button>
-    <button id="btnAddDecor" class="greenish">+ Décor</button>
+    <button id="btnModeLumiere" class="primary mode-btn">+ Lumière</button>
+    <button id="btnModeCamera" class="blueish mode-btn">+ Caméra</button>
+    <button id="btnModeDecor" class="greenish mode-btn">+ Décor</button>
     <button id="btnToggleTech">Masquer technique</button>
     <span style="flex:1"></span>
     <button id="btnExport">Exporter</button>
     <button id="btnImport">Ouvrir fichier</button>
     <button id="btnClear" class="danger">Vider</button>
     <input type="file" id="fileCsv" accept=".csv,text/csv">
-    <input type="file" id="fileBg" accept="image/*">
     <input type="file" id="fileProject" accept="application/json">
   </div>
 
   <div id="body">
     <div id="sidebar">
-      <div class="sidebar-tabs">
-        <div class="sidebar-tab active" id="tabPatch">Patch</div>
-        <div class="sidebar-tab" id="tabFixture">Fixture</div>
-      </div>
+      <div class="sidebar-tabs" id="sidebarTabs"></div>
+
       <div id="patchTabContent">
         <input id="patchSearch" placeholder="Filtrer (type, adresse...)">
         <div id="patchList"></div>
         <div id="emptyPatch">Aucun patch importé.<br>Utilise "Importer patch (CSV)" pour charger l'export de ta console.</div>
       </div>
+
       <div id="fixtureTabContent" style="display:none;">
         <div id="fixtureEmpty">Sélectionne un projecteur sur le plan pour voir et régler ses paramètres.</div>
         <div id="fixtureParams"></div>
+      </div>
+
+      <div id="cameraTabContent" style="display:none;">
+        <div class="tab-hint">Glisse la caméra sur le plan pour la placer.</div>
+        <div id="cameraTemplateList"></div>
+      </div>
+
+      <div id="fondTabContent" style="display:none;">
+        <div class="tab-hint" style="margin:0 0 14px;">Importe une image du plan de salle ou de scène comme fond.</div>
+        <button id="btnUploadBg">Importer image</button>
+        <input type="file" id="fileBg" accept="image/*">
+      </div>
+
+      <div id="decorFixtureTabContent" style="display:none;">
+        <div class="tab-hint">Glisse un élément de décor sur le plan pour le placer.</div>
+        <div id="decorTemplateList"></div>
       </div>
     </div>
 
@@ -286,8 +295,6 @@
           </div>
         </div>
       </div>
-
-      <div id="placeHint">Touche le plan pour placer le projecteur sélectionné</div>
 
       <div id="zoomCtl">
         <button id="zoomIn">+</button>
@@ -344,9 +351,9 @@
     decors: []       // {id, name, x, y, rot}
   });
 
-  let selectedPatchId = null;   // patch item picked from sidebar, waiting to be placed
   let selectedSymbol = null;    // {kind:'fixture'|'camera'|'decor', id}
   let view = { scale: 1, x: 40, y: 40 };
+  let activeMode = "lumiere";   // 'lumiere' | 'camera' | 'decor' — drives which sidebar tabs are shown
 
   function loadUiState() {
     try { return Object.assign({ techVisible: true }, JSON.parse(localStorage.getItem(UI_KEY) || "{}")); }
@@ -367,7 +374,6 @@
   const bgImage = $("bgImage");
   const patchListEl = $("patchList");
   const emptyPatchEl = $("emptyPatch");
-  const placeHint = $("placeHint");
   const inspector = $("inspector");
 
   /* ---------- Persistence ---------- */
@@ -385,10 +391,11 @@
 
   /* ---------- DMX fixture profiles (paramètres logiques, pas des tables d'octets) ---------- */
   const PARAM_META = {
-    dimmer: { label: "Intensité", unit: "%" },
-    cct:    { label: "Température", unit: "K" },
-    hue:    { label: "Hue", unit: "°" },
-    sat:    { label: "Saturation", unit: "%" }
+    dimmer:  { label: "Intensité", unit: "%" },
+    cct:     { label: "Température", unit: "K" },
+    hue:     { label: "Hue", unit: "°" },
+    sat:     { label: "Saturation", unit: "%" },
+    fanMode: { label: "Ventilateur", unit: "%" }
   };
 
   const FIXTURE_PROFILES = {
@@ -409,6 +416,60 @@
       params: ["dimmer", "cct", "hue", "sat"],
       ranges: { dimmer: [0, 100], cct: [1700, 10000], hue: [0, 360], sat: [0, 100] },
       defaults: { dimmer: 0, cct: 5600, hue: 0, sat: 0 }
+    },
+    "aputure|mt pro|5": {
+      label: "Aputure MT Pro — HSI (5 canaux)",
+      params: ["dimmer", "hue", "sat"],
+      ranges: { dimmer: [0, 100], hue: [0, 360], sat: [0, 100] },
+      defaults: { dimmer: 0, hue: 0, sat: 0 }
+    },
+    "aputure|ls 600x pro|1": {
+      label: "Aputure LS 600X Pro — Lighting 8-bit (CCT)",
+      params: ["dimmer", "cct"],
+      ranges: { dimmer: [0, 100], cct: [2700, 6500] },
+      defaults: { dimmer: 0, cct: 5600 }
+    },
+    "aputure|ls 600c pro|3": {
+      label: "Aputure LS 600c Pro — CCT & HSI 8-bit",
+      params: ["dimmer", "cct", "hue", "sat"],
+      ranges: { dimmer: [0, 100], cct: [2300, 10000], hue: [0, 360], sat: [0, 100] },
+      defaults: { dimmer: 0, cct: 5600, hue: 0, sat: 0 }
+    },
+    "aputure|ls 600c pro ii|3": {
+      label: "Aputure LS 600c Pro II — CCT & HSI 8-bit",
+      params: ["dimmer", "cct", "hue", "sat"],
+      ranges: { dimmer: [0, 100], cct: [2300, 10000], hue: [0, 360], sat: [0, 100] },
+      defaults: { dimmer: 0, cct: 5600, hue: 0, sat: 0 }
+    },
+    "nanlux|evoke 1200b|1": {
+      label: "Nanlux Evoke 1200B — CCT 8bit",
+      params: ["dimmer", "cct"],
+      ranges: { dimmer: [0, 100], cct: [2700, 6500] },
+      defaults: { dimmer: 0, cct: 5600 }
+    },
+    "nanlux|evoke 2400b|1": {
+      label: "Nanlux Evoke 2400B — CCT 8bit",
+      params: ["dimmer", "cct"],
+      ranges: { dimmer: [0, 100], cct: [2700, 6500] },
+      defaults: { dimmer: 0, cct: 5600 }
+    },
+    "dmg lighting|dmg mini|2": {
+      label: "DMG MINI — Color 8b : CCT & HSI",
+      params: ["dimmer", "cct", "hue", "sat"],
+      ranges: { dimmer: [0, 100], cct: [1700, 10000], hue: [0, 360], sat: [0, 100] },
+      defaults: { dimmer: 0, cct: 5600, hue: 0, sat: 0 }
+    },
+    "dmg lighting|dmg sl1|2": {
+      label: "DMG SL1 — Color 8b : CCT & HSI",
+      params: ["dimmer", "cct", "hue", "sat"],
+      ranges: { dimmer: [0, 100], cct: [1700, 10000], hue: [0, 360], sat: [0, 100] },
+      defaults: { dimmer: 0, cct: 5600, hue: 0, sat: 0 }
+    },
+    "creamsource|vortex|3": {
+      label: "Creamsource Vortex — CCT & Hue/Saturation 8-bit",
+      params: ["dimmer", "cct", "hue", "sat", "fanMode"],
+      ranges: { dimmer: [0, 100], cct: [2200, 15000], hue: [0, 360], sat: [0, 100], fanMode: [0, 100] },
+      defaults: { dimmer: 0, cct: 5600, hue: 0, sat: 0, fanMode: 0 }
     }
   };
   const GENERIC_PROFILE = {
@@ -441,6 +502,39 @@
     const shape = el.querySelector(".shape");
     if (!shape) return;
     shape.style.borderColor = (patchItem && patchItem.color) ? patchItem.color : "";
+  }
+  function hexToRgba(hex, a) {
+    const m = hex.match(/\w\w/g);
+    if (!m || m.length < 3) return null;
+    const [r, g, b] = m.map(h => parseInt(h, 16));
+    return `rgba(${r},${g},${b},${a})`;
+  }
+  function mixHex(hexA, hexB, t) {
+    const pa = hexA.match(/\w\w/g).map(h => parseInt(h, 16));
+    const pb = hexB.match(/\w\w/g).map(h => parseInt(h, 16));
+    const out = pa.map((v, i) => Math.round(v + (pb[i] - v) * t));
+    return "#" + out.map(v => v.toString(16).padStart(2, "0")).join("");
+  }
+  // couleur du centre du projecteur : reflète les réglages live (intensité, CCT/teinte).
+  function liveCenterBackground(profile, live) {
+    const dim = live.dimmer != null ? live.dimmer : 100;
+    const alpha = (0.15 + (Math.max(0, Math.min(100, dim)) / 100) * 0.65).toFixed(2);
+    if (profile.params.includes("hue") && live.sat != null && live.sat > 8) {
+      return `hsla(${live.hue || 0}, ${live.sat}%, 55%, ${alpha})`;
+    }
+    if (profile.params.includes("cct")) {
+      const r = profile.ranges.cct || [2000, 10000];
+      const cct = live.cct != null ? live.cct : (r[0] + r[1]) / 2;
+      const t = Math.min(1, Math.max(0, (cct - r[0]) / (r[1] - r[0])));
+      return hexToRgba(mixHex("#ffb347", "#bfe4fb", t), alpha);
+    }
+    return hexToRgba("#e8a33d", alpha);
+  }
+  function applyLiveCenter(el, profile, live) {
+    if (!el) return;
+    const center = el.querySelector(".shape .center");
+    if (!center) return;
+    center.style.background = liveCenterBackground(profile, live);
   }
 
   /* ---------- CSV parsing (no external deps, offline-safe) ---------- */
@@ -583,7 +677,7 @@
 
     items.forEach(p => {
       const row = document.createElement("div");
-      row.className = "patch-row" + (selectedPatchId === p.id ? " selected" : "");
+      row.className = "patch-row";
       row.style.borderColor = p.color || "transparent";
       const placed = isPlaced(p.id);
       row.innerHTML = `
@@ -591,14 +685,8 @@
         <span class="addr">${escapeHtml(p.address || "—")}</span>
         <span class="info">
           <div class="name">${escapeHtml(p.type || "Type inconnu")}</div>
-        </span>
-        <span class="drag-handle" title="Glisser sur le plan">⠿</span>`;
-      row.addEventListener("click", () => {
-        selectedPatchId = (selectedPatchId === p.id) ? null : p.id;
-        placeHint.classList.toggle("show", !!selectedPatchId);
-        renderPatchList();
-      });
-      attachPatchRowDrag(row.querySelector(".drag-handle"), p);
+        </span>`;
+      attachDragSource(row, p.address || p.type || "?", (x, y) => placeFixture(p.id, x, y));
       patchListEl.appendChild(row);
     });
   }
@@ -610,15 +698,15 @@
     saveProject(); renderPatchList(); renderSymbols();
   }
 
-  /* ---------- Drag a patch entry from the sidebar onto the plan ---------- */
-  function attachPatchRowDrag(handle, p) {
-    handle.addEventListener("pointerdown", (e) => {
+  /* ---------- Drag an item from the sidebar onto the plan to place it ---------- */
+  function attachDragSource(el, ghostLabel, onDrop) {
+    el.addEventListener("pointerdown", (e) => {
       e.stopPropagation();
-      handle.setPointerCapture(e.pointerId);
+      el.setPointerCapture(e.pointerId);
 
       const ghost = document.createElement("div");
       ghost.className = "drag-ghost";
-      ghost.textContent = p.address || p.type || "?";
+      ghost.textContent = ghostLabel;
       ghost.style.left = e.clientX + "px";
       ghost.style.top = e.clientY + "px";
       document.body.appendChild(ghost);
@@ -628,20 +716,20 @@
         ghost.style.top = ev.clientY + "px";
       }
       function onUp(ev) {
-        handle.removeEventListener("pointermove", onMove);
-        handle.removeEventListener("pointerup", onUp);
-        handle.removeEventListener("pointercancel", onUp);
+        el.removeEventListener("pointermove", onMove);
+        el.removeEventListener("pointerup", onUp);
+        el.removeEventListener("pointercancel", onUp);
         ghost.remove();
         const rect = planSurface.getBoundingClientRect();
         if (ev.clientX >= rect.left && ev.clientX <= rect.right && ev.clientY >= rect.top && ev.clientY <= rect.bottom) {
           const x = ((ev.clientX - rect.left) / rect.width) * 100;
           const y = ((ev.clientY - rect.top) / rect.height) * 100;
-          placeFixture(p.id, x, y);
+          onDrop(x, y);
         }
       }
-      handle.addEventListener("pointermove", onMove);
-      handle.addEventListener("pointerup", onUp);
-      handle.addEventListener("pointercancel", onUp);
+      el.addEventListener("pointermove", onMove);
+      el.addEventListener("pointerup", onUp);
+      el.addEventListener("pointercancel", onUp);
     });
   }
 
@@ -651,15 +739,81 @@
 
   $("patchSearch").addEventListener("input", renderPatchList);
 
-  /* ---------- Sidebar tabs ---------- */
-  function setSidebarTab(tab) {
-    $("tabPatch").classList.toggle("active", tab === "patch");
-    $("tabFixture").classList.toggle("active", tab === "fixture");
-    $("patchTabContent").style.display = tab === "patch" ? "" : "none";
-    $("fixtureTabContent").style.display = tab === "fixture" ? "" : "none";
+  /* ---------- Modes (Lumière / Caméra / Décor) & sidebar tabs ---------- */
+  const MODE_TABS = {
+    lumiere: [
+      { key: "patch", label: "Patch", contentId: "patchTabContent" },
+      { key: "fixture", label: "Fixture", contentId: "fixtureTabContent" }
+    ],
+    camera: [
+      { key: "fixture", label: "Fixture", contentId: "cameraTabContent" }
+    ],
+    decor: [
+      { key: "fond", label: "Fond", contentId: "fondTabContent" },
+      { key: "fixture", label: "Fixture", contentId: "decorFixtureTabContent" }
+    ]
+  };
+  const ALL_TAB_CONTENT_IDS = ["patchTabContent", "fixtureTabContent", "cameraTabContent", "fondTabContent", "decorFixtureTabContent"];
+  const MODE_BUTTONS = { lumiere: "btnModeLumiere", camera: "btnModeCamera", decor: "btnModeDecor" };
+
+  function applyMode(mode, initialTabKey) {
+    activeMode = mode;
+    Object.keys(MODE_BUTTONS).forEach(m => $(MODE_BUTTONS[m]).classList.toggle("mode-active", m === mode));
+    renderSidebarTabs(initialTabKey);
   }
-  $("tabPatch").addEventListener("click", () => setSidebarTab("patch"));
-  $("tabFixture").addEventListener("click", () => setSidebarTab("fixture"));
+
+  function renderSidebarTabs(initialTabKey) {
+    const tabs = MODE_TABS[activeMode];
+    const bar = $("sidebarTabs");
+    bar.innerHTML = "";
+    tabs.forEach(t => {
+      const el = document.createElement("div");
+      el.className = "sidebar-tab";
+      el.textContent = t.label;
+      el.addEventListener("click", () => selectSidebarTab(t.key));
+      bar.appendChild(el);
+    });
+    selectSidebarTab(initialTabKey && tabs.some(t => t.key === initialTabKey) ? initialTabKey : tabs[0].key);
+  }
+
+  function selectSidebarTab(key) {
+    const tabs = MODE_TABS[activeMode];
+    const tabButtons = [...$("sidebarTabs").children];
+    tabs.forEach((t, i) => tabButtons[i].classList.toggle("active", t.key === key));
+    ALL_TAB_CONTENT_IDS.forEach(id => { $(id).style.display = "none"; });
+    const t = tabs.find(t => t.key === key);
+    if (t) $(t.contentId).style.display = "";
+  }
+
+  $("btnModeLumiere").addEventListener("click", () => applyMode("lumiere"));
+  $("btnModeCamera").addEventListener("click", () => applyMode("camera"));
+  $("btnModeDecor").addEventListener("click", () => applyMode("decor"));
+
+  function renderCameraTemplateTab() {
+    const list = $("cameraTemplateList");
+    list.innerHTML = "";
+    const row = document.createElement("div");
+    row.className = "patch-row";
+    row.innerHTML = `<span class="info"><div class="name">Caméra</div></span>`;
+    attachDragSource(row, "CAM", (x, y) => {
+      project.cameras.push({ id: uid(), name: "Caméra " + (project.cameras.length + 1), x, y, rot: 0 });
+      saveProject(); renderSymbols();
+    });
+    list.appendChild(row);
+  }
+
+  function renderDecorTemplateTab() {
+    const list = $("decorTemplateList");
+    list.innerHTML = "";
+    const row = document.createElement("div");
+    row.className = "patch-row";
+    row.innerHTML = `<span class="info"><div class="name">Personne (vue de dessus)</div></span>`;
+    attachDragSource(row, "PERS", (x, y) => {
+      project.decors.push({ id: uid(), name: "Personne " + (project.decors.length + 1), x, y, rot: 0, template: "person" });
+      saveProject(); renderSymbols();
+    });
+    list.appendChild(row);
+  }
 
   function renderFixtureTab() {
     const paramsEl = $("fixtureParams");
@@ -706,6 +860,7 @@
         fixture.live[param] = v;
         valEl.textContent = Math.round(v) + meta.unit;
         saveProject();
+        applyLiveCenter(document.querySelector(`.symbol[data-kind="fixture"][data-id="${fixture.id}"]`), profile, fixture.live);
       });
       paramsEl.appendChild(row);
     });
@@ -740,26 +895,6 @@
     }
   }
 
-  /* ---------- Adding cameras / decors ---------- */
-  let placingCamera = false;
-  let placingDecor = false;
-  $("btnAddCamera").addEventListener("click", () => {
-    placingCamera = true;
-    placingDecor = false;
-    selectedPatchId = null;
-    placeHint.textContent = "Touche le plan pour placer la caméra";
-    placeHint.classList.add("show");
-    renderPatchList();
-  });
-  $("btnAddDecor").addEventListener("click", () => {
-    placingDecor = true;
-    placingCamera = false;
-    selectedPatchId = null;
-    placeHint.textContent = "Touche le plan pour placer le décor";
-    placeHint.classList.add("show");
-    renderPatchList();
-  });
-
   /* ---------- Layer visibility (calque technique) ---------- */
   function applyLayerVisibility() {
     appEl.classList.toggle("hide-technique", !uiState.techVisible);
@@ -772,34 +907,9 @@
     applyLayerVisibility();
   });
 
-  /* ---------- Placing on the plan ---------- */
+  /* ---------- Deselect on empty plan tap (placement is drag-and-drop only, see attachDragSource) ---------- */
   planSurface.addEventListener("pointerdown", (e) => {
     if (e.target !== planSurface && e.target !== bgImage) return; // clicked a symbol, handled elsewhere
-    const rect = planSurface.getBoundingClientRect();
-    const x = ((e.clientX - rect.left) / rect.width) * 100;
-    const y = ((e.clientY - rect.top) / rect.height) * 100;
-
-    if (selectedPatchId) {
-      placeFixture(selectedPatchId, x, y);
-      selectedPatchId = null;
-      placeHint.classList.remove("show");
-      return;
-    }
-    if (placingCamera) {
-      project.cameras.push({ id: uid(), name: "Caméra " + (project.cameras.length + 1), x, y, rot: 0 });
-      placingCamera = false;
-      placeHint.classList.remove("show");
-      saveProject(); renderSymbols();
-      return;
-    }
-    if (placingDecor) {
-      project.decors.push({ id: uid(), name: "Décor " + (project.decors.length + 1), x, y, rot: 0 });
-      placingDecor = false;
-      placeHint.classList.remove("show");
-      saveProject(); renderSymbols();
-      return;
-    }
-    // otherwise: clicked empty plan -> deselect
     deselectSymbol();
   });
 
@@ -823,6 +933,8 @@
     });
   }
 
+  const PERSON_SVG = '<svg viewBox="0 0 34 34" width="100%" height="100%"><circle cx="17" cy="20" r="9" fill="currentColor"/><polygon points="17,3 11,13 23,13" fill="currentColor"/></svg>';
+
   function makeSymbolEl(kind, obj, labelText, addr, profile, patchItem) {
     const el = document.createElement("div");
     el.className = "symbol " + kind;
@@ -834,7 +946,16 @@
     const shape = document.createElement("div");
     shape.className = "shape";
     shape.style.setProperty("--rot", (obj.rot || 0) + "deg");
-    shape.textContent = kind === "fixture" ? (addr || "•") : (kind === "camera" ? "CAM" : "DEC");
+    if (kind === "fixture") {
+      const center = document.createElement("div");
+      center.className = "center";
+      center.textContent = addr || "•";
+      shape.appendChild(center);
+    } else if (kind === "decor" && obj.template === "person") {
+      shape.innerHTML = PERSON_SVG;
+    } else {
+      shape.textContent = kind === "camera" ? "CAM" : "DEC";
+    }
     el.appendChild(shape);
 
     const label = document.createElement("div");
@@ -855,7 +976,10 @@
     });
 
     if (kind === "fixture") {
-      if (profile) ensureLive(obj, profile);
+      if (profile) {
+        ensureLive(obj, profile);
+        applyLiveCenter(el, profile, obj.live);
+      }
       applyFixtureColor(el, patchItem);
     }
 
@@ -924,7 +1048,7 @@
       el.classList.toggle("selected", el.dataset.kind === kind && el.dataset.id === id);
     });
     updateInspector();
-    if (kind === "fixture") setSidebarTab("fixture");
+    if (kind === "fixture") applyMode("lumiere", "fixture");
     renderFixtureTab();
   }
   function deselectSymbol() {
@@ -1045,7 +1169,9 @@
   renderSymbols();
   applyView();
   applyLayerVisibility();
-  setSidebarTab("patch");
+  renderCameraTemplateTab();
+  renderDecorTemplateTab();
+  applyMode("lumiere");
   renderFixtureTab();
 })();
 
