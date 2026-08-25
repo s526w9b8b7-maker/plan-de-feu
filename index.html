@@ -869,6 +869,14 @@
     sub.textContent = `${patchItem ? patchItem.address || "—" : "—"} · ${profile.label}`;
     paramsEl.appendChild(sub);
 
+    if (profile === GENERIC_PROFILE && patchItem) {
+      const diag = document.createElement("div");
+      diag.style.cssText = "color:var(--muted); font-size:11px; font-family:var(--mono); margin:-10px 0 16px; line-height:1.5; padding:8px; background:var(--bg); border-radius:6px;";
+      diag.textContent = `Aucun profil trouvé pour :\nFabricant : ${patchItem.manufacturer || "(vide)"}\nType : ${patchItem.type || "(vide)"}\nMode : ${patchItem.mode || "(vide)"}`;
+      diag.style.whiteSpace = "pre-line";
+      paramsEl.appendChild(diag);
+    }
+
     profile.params.forEach(param => {
       const meta = PARAM_META[param] || { label: param, unit: "" };
       const range = profile.ranges[param] || [0, 100];
