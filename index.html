@@ -503,7 +503,16 @@
   }
   function getProfile(patchItem) {
     if (!patchItem) return GENERIC_PROFILE;
-    return FIXTURE_PROFILES[profileKey(patchItem)] || GENERIC_PROFILE;
+    const key = profileKey(patchItem);
+    if (FIXTURE_PROFILES[key]) return FIXTURE_PROFILES[key];
+    // pas de mode exact (numérotation de mode variable selon les fabricants/consoles) :
+    // on prend le premier profil connu pour ce fabricant+type plutôt que de retomber à rien.
+    const prefix = key.slice(0, key.lastIndexOf("|") + 1);
+    const fallbackKey = Object.keys(FIXTURE_PROFILES).find(k => k.startsWith(prefix));
+    return fallbackKey ? FIXTURE_PROFILES[fallbackKey] : GENERIC_PROFILE;
+  }
+  function isExactProfileMatch(patchItem) {
+    return !!(patchItem && FIXTURE_PROFILES[profileKey(patchItem)]);
   }
   function ensureLive(fixture, profile) {
     if (!fixture.live) fixture.live = Object.assign({}, profile.defaults);
@@ -869,6 +878,12 @@
     sub.textContent = `${patchItem ? patchItem.address || "—" : "—"} · ${profile.label}`;
     paramsEl.appendChild(sub);
 
+    if (patchItem && profile !== GENERIC_PROFILE && !isExactProfileMatch(patchItem)) {
+      const note = document.createElement("div");
+      note.style.cssText = "color:var(--muted); font-size:11px; font-family:var(--mono); margin:-10px 0 16px; line-height:1.5; padding:8px; background:var(--bg); border-radius:6px;";
+      note.textContent = `Mode "${patchItem.mode || "(vide)"}" non reconnu pour ce fabricant/type — profil approximatif basé sur un autre mode connu.`;
+      paramsEl.appendChild(note);
+    }
     if (profile === GENERIC_PROFILE && patchItem) {
       const diag = document.createElement("div");
       diag.style.cssText = "color:var(--muted); font-size:11px; font-family:var(--mono); margin:-10px 0 16px; line-height:1.5; padding:8px; background:var(--bg); border-radius:6px;";
