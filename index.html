@@ -399,74 +399,82 @@
   };
 
   const FIXTURE_PROFILES = {
-    "aputure|mt pro|3": {
+    "aputure|mtpro|3": {
       label: "Aputure MT Pro — CCT & HSI",
       params: ["dimmer", "cct", "hue", "sat"],
       ranges: { dimmer: [0, 100], cct: [2000, 10000], hue: [0, 360], sat: [0, 100] },
       defaults: { dimmer: 0, cct: 5600, hue: 0, sat: 0 }
     },
-    "aputure|mt pro|26": {
+    "aputure|mtpro|26": {
       label: "Aputure MT Pro — HSI 36 pixels (agrégat)",
       params: ["dimmer", "hue", "sat"],
       ranges: { dimmer: [0, 100], hue: [0, 360], sat: [0, 100] },
       defaults: { dimmer: 0, hue: 0, sat: 0 }
     },
-    "dmg lighting|dmg dash|2": {
+    "dmglighting|dmgdash|2": {
       label: "DMG DASH — Color 8b : CCT & HSI",
       params: ["dimmer", "cct", "hue", "sat"],
       ranges: { dimmer: [0, 100], cct: [1700, 10000], hue: [0, 360], sat: [0, 100] },
       defaults: { dimmer: 0, cct: 5600, hue: 0, sat: 0 }
     },
-    "aputure|mt pro|5": {
+    "aputure|mtpro|5": {
       label: "Aputure MT Pro — HSI (5 canaux)",
       params: ["dimmer", "hue", "sat"],
       ranges: { dimmer: [0, 100], hue: [0, 360], sat: [0, 100] },
       defaults: { dimmer: 0, hue: 0, sat: 0 }
     },
-    "aputure|ls 600x pro|1": {
+    "aputure|ls600xpro|1": {
       label: "Aputure LS 600X Pro — Lighting 8-bit (CCT)",
       params: ["dimmer", "cct"],
       ranges: { dimmer: [0, 100], cct: [2700, 6500] },
       defaults: { dimmer: 0, cct: 5600 }
     },
-    "aputure|ls 600c pro|3": {
+    "aputure|ls600cpro|3": {
       label: "Aputure LS 600c Pro — CCT & HSI 8-bit",
       params: ["dimmer", "cct", "hue", "sat"],
       ranges: { dimmer: [0, 100], cct: [2300, 10000], hue: [0, 360], sat: [0, 100] },
       defaults: { dimmer: 0, cct: 5600, hue: 0, sat: 0 }
     },
-    "aputure|ls 600c pro ii|3": {
+    "aputure|ls600cproii|3": {
       label: "Aputure LS 600c Pro II — CCT & HSI 8-bit",
       params: ["dimmer", "cct", "hue", "sat"],
       ranges: { dimmer: [0, 100], cct: [2300, 10000], hue: [0, 360], sat: [0, 100] },
       defaults: { dimmer: 0, cct: 5600, hue: 0, sat: 0 }
     },
-    "nanlux|evoke 1200b|1": {
+    "nanlux|evoke1200b|1": {
       label: "Nanlux Evoke 1200B — CCT 8bit",
       params: ["dimmer", "cct"],
       ranges: { dimmer: [0, 100], cct: [2700, 6500] },
       defaults: { dimmer: 0, cct: 5600 }
     },
-    "nanlux|evoke 2400b|1": {
+    "nanlux|evoke2400b|1": {
       label: "Nanlux Evoke 2400B — CCT 8bit",
       params: ["dimmer", "cct"],
       ranges: { dimmer: [0, 100], cct: [2700, 6500] },
       defaults: { dimmer: 0, cct: 5600 }
     },
-    "dmg lighting|dmg mini|2": {
+    "dmglighting|dmgmini|2": {
       label: "DMG MINI — Color 8b : CCT & HSI",
       params: ["dimmer", "cct", "hue", "sat"],
       ranges: { dimmer: [0, 100], cct: [1700, 10000], hue: [0, 360], sat: [0, 100] },
       defaults: { dimmer: 0, cct: 5600, hue: 0, sat: 0 }
     },
-    "dmg lighting|dmg sl1|2": {
+    "dmglighting|dmgsl1|2": {
       label: "DMG SL1 — Color 8b : CCT & HSI",
       params: ["dimmer", "cct", "hue", "sat"],
       ranges: { dimmer: [0, 100], cct: [1700, 10000], hue: [0, 360], sat: [0, 100] },
       defaults: { dimmer: 0, cct: 5600, hue: 0, sat: 0 }
     },
     "creamsource|vortex|3": {
-      label: "Creamsource Vortex — CCT & Hue/Saturation 8-bit",
+      label: "Vortex — CCT & Hue/Saturation 8-bit",
+      params: ["dimmer", "cct", "hue", "sat", "fanMode"],
+      ranges: { dimmer: [0, 100], cct: [2200, 15000], hue: [0, 360], sat: [0, 100], fanMode: [0, 100] },
+      defaults: { dimmer: 0, cct: 5600, hue: 0, sat: 0, fanMode: 0 }
+    },
+    // le PDX de référence porte la marque "Creamsource" mais Aputure distribue/labellise
+    // aussi ce fixture sous son propre nom selon les patchs — on couvre les deux
+    "aputure|vortex|3": {
+      label: "Vortex — CCT & Hue/Saturation 8-bit",
       params: ["dimmer", "cct", "hue", "sat", "fanMode"],
       ranges: { dimmer: [0, 100], cct: [2200, 15000], hue: [0, 360], sat: [0, 100], fanMode: [0, 100] },
       defaults: { dimmer: 0, cct: 5600, hue: 0, sat: 0, fanMode: 0 }
@@ -483,8 +491,12 @@
     const match = String(m || "").match(/\d+/);
     return match ? match[0] : String(m || "").trim();
   }
+  // ignore la casse et toute ponctuation/espacement ("Evoke 2400B" == "Evoke2400B" == "evoke-2400b")
+  function normalizeText(s) {
+    return String(s || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+  }
   function profileKey(patchItem) {
-    return `${(patchItem.manufacturer || "").toLowerCase().trim()}|${(patchItem.type || "").toLowerCase().trim()}|${normalizeMode(patchItem.mode)}`;
+    return `${normalizeText(patchItem.manufacturer)}|${normalizeText(patchItem.type)}|${normalizeMode(patchItem.mode)}`;
   }
   function getProfile(patchItem) {
     if (!patchItem) return GENERIC_PROFILE;
